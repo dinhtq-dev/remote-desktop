@@ -1,0 +1,17 @@
+[Unit]
+Description=Ubuntu Remote Web - websockify bridge
+After=urw-x11vnc.service
+Wants=urw-x11vnc.service
+
+[Service]
+Type=simple
+Environment=WEBSOCKIFY_HOST=127.0.0.1
+Environment=WEBSOCKIFY_PORT=6080
+Environment=VNC_HOST=127.0.0.1
+Environment=VNC_PORT=5900
+ExecStart=%h/Documents/source/ubuntu-remote-web/scripts/start-websockify.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,19 @@
+# Example only — do not overwrite ~/.cloudflared/config.yml blindly.
+# This host already has tunnel "rdp" (rdp.dinhtq.vn → tcp://localhost:3389).
+# Add a separate hostname for the web remote UI, for example:
+
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /home/macos/.cloudflared/YOUR_TUNNEL_ID.json
+
+ingress:
+  # Existing RDP (keep if you still need it)
+  - hostname: rdp.example.com
+    service: tcp://localhost:3389
+
+  # Web remote desktop (Next.js + noVNC)
+  - hostname: remote.example.com
+    service: http://127.0.0.1:3100
+
+  - service: http_status:404
+
+# Strongly recommended: Cloudflare Zero Trust → Access → protect remote.example.com

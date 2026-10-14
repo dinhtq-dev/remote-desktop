@@ -1,0 +1,17 @@
+[Unit]
+Description=Ubuntu Remote Web - Next.js custom server
+After=network.target urw-websockify.service
+Wants=urw-websockify.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Documents/source/ubuntu-remote-web
+Environment=NODE_ENV=production
+# Load secrets via dotenv in server.mjs / Next (.env). Do NOT use
+# EnvironmentFile= here — systemd expands `$` and breaks bcrypt hashes.
+ExecStart=/usr/bin/env node server.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
