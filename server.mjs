@@ -1,32 +1,30 @@
 import 'dotenv/config'
 import http from 'node:http'
+import net from 'node:net'
 import { parse as parseUrl } from 'node:url'
-import next from 'next'
-import httpProxy from 'http-proxy'
+import { WebSocketServer, createWebSocketStream } from 'ws'
 import { jwtVerify } from 'jose'
 
+if (process.argv.includes('--production')) process.env.NODE_ENV = 'production'
+const { default: next } = await import('next')
 const dev = process.env.NODE_ENV !== 'production'
 const host = process.env.HOST || '127.0.0.1'
 const port = Number(process.env.PORT || 3100)
-const websockifyHost = process.env.WEBSOCKIFY_HOST || '127.0.0.1'
-const websockifyPort = Number(process.env.WEBSOCKIFY_PORT || 6080)
+const vncHost = process.env.VNC_HOST || '127.0.0.1'
+const vncPort = Number(process.env.VNC_PORT || 5900)
 const cookieName = process.env.SESSION_COOKIE_NAME || 'urw_session'
 
 const app = next({ dev, hostname: host, port })
 const handle = app.getRequestHandler()
-const proxy = httpProxy.createProxyServer({
-    target: `http://${websockifyHost}:${websockifyPort}`,
-    ws: true,
-    changeOrigin: true,
-    xfwd: true
-})
-
-proxy.on('error', (err, _req, res) => {
-    console.error('[proxy]', err.message)
-    if (res && !res.headersSent && typeof res.writeHead === 'function') {
-        res.writeHead(502, { 'Content-Type': 'text/plain' })
-        res.end('Bad gateway: websockify unavailable')
-    }
+const wss = new WebSocketServer({ noServer: true })
+wss.on('connection', (ws) => {
+    const vnc = net.connect(vncPort, vncHost)
+    const stream = createWebSocketStream(ws)
+    vnc.pipe(stream).pipe(vnc)
+    vnc.on('error', (err) => console.error('[vnc]', err.message))
+    stream.on('error', (err) => console.error('[websocket]', err.message))
+    vnc.on('close', () => stream.destroy())
+    stream.on('close', () => vnc.destroy())
 })
 
 function getCookie(req, name) {
@@ -93,13 +91,10 @@ server.on('upgrade', async (req, socket, head) => {
     }
 
     // websockify expects path / or /websockify — strip our prefix
-    req.url = '/'
-    proxy.ws(req, socket, head)
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
 })
 
 server.listen(port, host, () => {
     console.log(`[ubuntu-remote-web] http://${host}:${port}`)
-    console.log(
-        `[ubuntu-remote-web] proxy /vnc-ws -> ws://${websockifyHost}:${websockifyPort} (auth required)`
-    )
+    console.log(`[remote-web] /vnc-ws -> ${vncHost}:${vncPort} (auth required)`)
 })

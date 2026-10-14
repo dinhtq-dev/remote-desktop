@@ -32,6 +32,7 @@ function displayEnv(): NodeJS.ProcessEnv {
 }
 
 export async function listDisplays(): Promise<DisplayInfo[]> {
+    if (process.platform !== 'linux') return []
     const { stdout } = await execFileAsync('xrandr', ['--listmonitors'], {
         env: displayEnv(),
         timeout: 5000
@@ -94,6 +95,10 @@ export async function setDisplaySelection(selection: DisplaySelection): Promise<
     selection: DisplaySelection
     clip: string
 }> {
+    if (process.platform !== 'linux') {
+        if (selection !== 'all') throw new Error('Monitor selection requires Linux x11vnc')
+        return { selection: 'all', clip: '' }
+    }
     mkdirSync(RUNTIME_DIR, { recursive: true, mode: 0o700 })
 
     let clip = ''

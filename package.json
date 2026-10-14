@@ -4,9 +4,9 @@
   "private": true,
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "dev": "NODE_ENV=development node server.mjs",
+    "dev": "node server.mjs",
     "build": "next build",
-    "start": "NODE_ENV=production node server.mjs",
+    "start": "node server.mjs --production",
     "start:all": "./start.sh",
     "gen-env": "node scripts/gen-env.mjs",
     "lint": "eslint"

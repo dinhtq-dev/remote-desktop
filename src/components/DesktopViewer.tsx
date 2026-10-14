@@ -66,7 +66,7 @@ function applyViewMode(rfb: RfBInstance, mode: ViewMode, screenEl: HTMLElement) 
     if (mode === 'original') {
         rfb.scaleViewport = false
         rfb.clipViewport = true
-        rfb.dragViewport = true
+        rfb.dragViewport = false
         if (canvas) {
             canvas.style.width = ''
             canvas.style.height = ''
@@ -81,7 +81,7 @@ function applyViewMode(rfb: RfBInstance, mode: ViewMode, screenEl: HTMLElement) 
 
     rfb.scaleViewport = needsShrink
     rfb.clipViewport = !needsShrink
-    rfb.dragViewport = !needsShrink
+    rfb.dragViewport = false
 
     if (canvas) {
         canvas.style.width = ''
@@ -227,7 +227,7 @@ export function DesktopViewer() {
                 rfb.addEventListener('disconnect', () => {
                     if (!cancelled) {
                         setStatus('Disconnected')
-                        setError('VNC connection closed. Is x11vnc/websockify running?')
+                        setError('VNC connection closed. Is a VNC server running?')
                     }
                 })
                 rfb.addEventListener('desktopresize', () => {
@@ -365,7 +365,7 @@ export function DesktopViewer() {
                             </svg>
                         </div>
                         <div className="leading-tight">
-                            <div className="text-sm font-semibold tracking-wide">Ubuntu Remote</div>
+                            <div className="text-sm font-semibold tracking-wide">Remote Desktop</div>
                             <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
                                 <StatusDot status={status} />
                                 <span>{status}</span>

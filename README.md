@@ -1,115 +1,44 @@
-# Ubuntu Remote Web
+# Remote Desktop Web
 
-Secure browser remote desktop for **this Ubuntu machine**. Next.js UI + noVNC streams the live `DISPLAY=:0` session via localhost-only `x11vnc` / `websockify`, optionally exposed with Cloudflare Tunnel.
-
-**Not for Vercel.** The desktop stream must run on this host.
-
-## Architecture
-
-```text
-Browser → Cloudflare Tunnel (HTTPS) → Next.js :3100 (login + noVNC)
-                                         └─ /vnc-ws (auth cookie) → websockify :6080 → x11vnc :5900 → DISPLAY=:0
-```
-
-VNC and websockify bind to `127.0.0.1` only.
+Browser-based desktop access for Linux, Windows, and macOS. Next.js serves login and noVNC; authenticated WebSocket connections bridge directly to a local VNC server. Run this app **on the machine being controlled**. Not suitable for Vercel.
 
 ## Requirements
 
-- Ubuntu desktop session logged in (`DISPLAY=:0`)
-- Node.js 20+
-- Packages: `x11vnc`, `websockify`
-- Optional: `cloudflared` (already common on this machine)
+- Node.js 20+ and npm or pnpm.
+- A VNC server listening on `127.0.0.1:5900` (or configure `VNC_HOST` and `VNC_PORT` in `.env`).
+- Linux X11: `x11vnc` can be started with `./start.sh`. Wayland is not supported by x11vnc.
+- Windows: install and start a VNC server, configure its own VNC password and restrict it to localhost. Windows Remote Desktop (RDP) alone is not a VNC server.
+- macOS: enable Screen Sharing in System Settings > General > Sharing; enable VNC viewer access with a VNC password if needed. Grant Screen Recording/Accessibility permissions when macOS requests them. Check where the server binds; restrict access with firewall rules if it cannot bind to localhost.
 
-## Quick start
+## Run on Windows
 
-```bash
-cd ~/Documents/source/ubuntu-remote-web
+1. Install Node.js 20+ and a VNC server on this computer. Start VNC server, configure its VNC password and bind it to localhost (see your VNC server's settings). RDP does not work here.
+2. Double-click `start.cmd` (do not double-click `start.ps1`), or run `./start.ps1` from an already open PowerShell window. First run creates `.env` and prints the login password; save it. `start.cmd` always waits for a key before closing.
+4. Open `http://127.0.0.1:3100/login`. Enter web password; VNC may also ask for its own password.
 
-# 1) System packages (once)
-sudo apt-get update
-sudo apt-get install -y x11vnc websockify
+## Run on macOS
 
-# 2) Env — sửa AUTH_PASSWORD trong .env
-ppnpm install
-pnpm gen-env          # hoặc copy .env.example → .env rồi sửa tay
+1. Install Node.js 20+. Enable Screen Sharing in System Settings > General > Sharing and configure a VNC password. Limit external access to the VNC port with macOS firewall/network rules.
+2. Run `npm run gen-env` once, then `bash ./start-macos.sh`.
+3. Open `http://127.0.0.1:3100/login`. Grant macOS screen-control permissions if requested.
 
-# 3) Build + chạy web
-pnpm build
-pnpm start            # = NODE_ENV=production node server.mjs
+Launchers check VNC connectivity and install/build web dependencies, but cannot install or configure a VNC server automatically.
+
+## Manual run
+
+```sh
+npm install
+npm run gen-env
+npm run build
+npm start
 ```
 
-Open `http://127.0.0.1:3100/login`, sign in, open Desktop.
+`gen-env` prints a random login password and creates `.env`. Open `http://127.0.0.1:3100/login`. Set `VNC_HOST` and `VNC_PORT` in `.env` if your VNC server uses different settings. On Windows/macOS start the VNC server separately before opening the viewer. noVNC may prompt for the VNC server's separate password.
 
-### Viewer controls (AnyDesk-like)
+On Linux X11, install `x11vnc` and use `./start.sh` instead of `npm start` to launch both the VNC server and web app. Linux systemd units under `systemd/` are legacy; use `start.sh` for the integrated bridge.
 
-Toolbar on `/desktop`:
+Monitor selection uses `xrandr` and restarts `x11vnc` on Linux X11. Windows/macOS currently show the full VNC desktop; select displays using your VNC server's own settings. View scaling, fullscreen, and reconnect work on all platforms.
 
-- **Screen** — `All monitors` or one output (restarts x11vnc with `-clip WxH+X+Y`)
-- **View**
-  - `Fit` — scale giữ tỉ lệ cho vừa cửa sổ
-  - `1:1` — kích thước gốc, kéo/scroll nếu lớn hơn
-  - `Stretch` — kéo đầy khung (không giữ tỉ lệ)
-  - `Shrink` — chỉ thu nhỏ khi remote lớn hơn viewport
-- **Fullscreen** — fullscreen trình duyệt
-- **Reconnect** — nối lại VNC
+## Security
 
-Đổi mật khẩu: sửa `AUTH_PASSWORD` trong `.env`, rồi:
-
-```bash
-# nếu chạy bằng pnpm
-# Ctrl+C rồi:
-pnpm start
-
-# nếu dùng systemd
-systemctl --user restart urw-web
-```
-
-
-## systemd (user)
-
-```bash
-mkdir -p ~/.config/systemd/user
-cp systemd/*.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now urw-x11vnc.service urw-websockify.service urw-web.service
-systemctl --user status urw-x11vnc urw-websockify urw-web
-```
-
-Logs: `journalctl --user -u urw-web -f` and `.runtime/x11vnc.log`.
-
-## Cloudflare Tunnel
-
-This machine already has `cloudflared` and tunnels (e.g. `rdp`). Point a hostname to the web UI:
-
-1. Edit `~/.cloudflared/config.yml` ingress to include:
-   ```yaml
-   - hostname: remote.yourdomain.com
-     service: http://127.0.0.1:3100
-   ```
-   See also [`cloudflared/config.example.yml`](cloudflared/config.example.yml).
-2. Prefer **Cloudflare Access** (email OTP) on that hostname, plus the app password.
-3. Do **not** publish ports `5900` / `6080`.
-4. Behind HTTPS, cookies become `Secure` automatically via `x-forwarded-proto`.
-
-```bash
-cloudflared tunnel run rdp   # or your tunnel name
-# optional systemd: cloudflared.service
-```
-
-## Security notes
-
-- App password is bcrypt-hashed in `.env` (mode `600`).
-- Session cookie is HttpOnly JWT (`SESSION_SECRET`).
-- `/vnc-ws` upgrades are rejected without a valid session cookie.
-- Still treat the tunnel URL as sensitive; enable Cloudflare Access for defense in depth.
-- Full desktop control = full user privileges of the logged-in session.
-
-## Scripts
-
-| Command | Purpose |
-|---|---|
-| `pnpm start` | Custom server (Next + WS proxy) |
-| `npm run hash-password` | Print bcrypt hash for `.env` |
-| `node scripts/gen-env.mjs` | Create `.env` with random password |
-| `./scripts/start-x11vnc.sh` | Localhost x11vnc on `:0` |
-| `./scripts/start-websockify.sh` | WS ↔ VNC bridge |
+Web login controls `/vnc-ws`; VNC traffic is not exposed through a separate WebSocket port. Keep `HOST=127.0.0.1` and restrict VNC to localhost wherever possible. Do not expose VNC port 5900 to the internet. Use HTTPS and an additional access layer (for example Cloudflare Access) for remote connections. Desktop access grants privileges of the logged-in OS user. Change `AUTH_PASSWORD` and `SESSION_SECRET` in `.env` if compromised.
