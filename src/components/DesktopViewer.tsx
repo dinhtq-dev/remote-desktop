@@ -18,6 +18,8 @@ type DisplayInfo = {
 type RfBInstance = {
     disconnect: () => void
     focus: () => void
+    clipboardPasteFrom: (text: string) => void
+    sendKey: (keysym: number, code: string, down?: boolean) => void
     scaleViewport: boolean
     resizeSession: boolean
     clipViewport: boolean
@@ -120,7 +122,7 @@ function IconButton({
             title={label}
             aria-label={label}
             onClick={onClick}
-            className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${
+            className={`inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-xl border transition active:scale-95 sm:h-9 sm:w-9 sm:rounded-lg ${
                 danger
                     ? 'border-rose-900/60 bg-rose-950/40 text-rose-200 hover:bg-rose-900/50'
                     : 'border-white/10 bg-white/5 text-zinc-200 hover:border-white/20 hover:bg-white/10'
@@ -135,6 +137,8 @@ export function DesktopViewer() {
     const router = useRouter()
     const screenRef = useRef<HTMLDivElement | null>(null)
     const shellRef = useRef<HTMLDivElement | null>(null)
+    const keyboardRef = useRef<HTMLTextAreaElement | null>(null)
+    const composingRef = useRef(false)
     const rfbRef = useRef<RfBInstance | null>(null)
     const [status, setStatus] = useState('Connecting…')
     const [error, setError] = useState('')
@@ -145,6 +149,7 @@ export function DesktopViewer() {
     const [switching, setSwitching] = useState(false)
     const [reconnectToken, setReconnectToken] = useState(0)
     const [toolbarVisible, setToolbarVisible] = useState(true)
+    const [showTouchHelp, setShowTouchHelp] = useState(false)
 
     const connected = status === 'Connected'
     const viewHint = VIEW_MODES.find((mode) => mode.id === viewMode)?.hint
@@ -182,6 +187,7 @@ export function DesktopViewer() {
 
     useEffect(() => {
         if (!toolbarVisible) return
+        if (window.matchMedia('(pointer: coarse)').matches) return
         const timeout = window.setTimeout(() => setToolbarVisible(false), 4000)
         return () => window.clearTimeout(timeout)
     }, [toolbarVisible])
@@ -197,7 +203,7 @@ export function DesktopViewer() {
             try {
                 const mod = await import('@novnc/novnc')
                 const RFB = (
-                    mod as {
+                    mod as unknown as {
                         default: new (target: HTMLElement, url: string, options?: object) => RfBInstance
                     }
                 ).default
@@ -340,10 +346,26 @@ export function DesktopViewer() {
         }
     }
 
+    function sendText(text: string) {
+        const rfb = rfbRef.current
+        if (!rfb || !text) return
+
+        rfb.clipboardPasteFrom(text)
+        window.setTimeout(() => {
+            rfb.sendKey(0xffe3, 'ControlLeft', true)
+            rfb.sendKey(0x76, 'KeyV')
+            rfb.sendKey(0xffe3, 'ControlLeft', false)
+        }, 20)
+    }
+
+    function showKeyboard() {
+        keyboardRef.current?.focus({ preventScroll: true })
+    }
+
     return (
         <div
             ref={shellRef}
-            className="relative flex h-dvh flex-col bg-[#07080a] text-zinc-100"
+            className="relative flex h-dvh min-h-0 flex-col overflow-hidden bg-[#07080a] text-zinc-100"
         >
             <div
                 className={`pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/70 to-transparent transition-opacity duration-300 ${
@@ -352,12 +374,12 @@ export function DesktopViewer() {
             />
 
             <header
-                className={`absolute inset-x-0 top-0 z-30 mx-3 mt-3 transition-all duration-300 ${
+                className={`remote-toolbar absolute inset-x-0 top-0 z-30 mx-2 transition-all duration-300 sm:mx-3 ${
                     toolbarVisible ? 'translate-y-0 opacity-100' : 'pointer-events-none -translate-y-4 opacity-0'
                 }`}
             >
-                <div className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-[#12141a]/85 px-3 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-                    <div className="mr-1 flex min-w-[140px] items-center gap-2.5">
+                <div className="pointer-events-auto flex max-h-[calc(100dvh-1rem)] flex-wrap items-center gap-2 overflow-y-auto rounded-2xl border border-white/10 bg-[#12141a]/90 px-2 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:gap-3 sm:px-3 sm:py-2.5">
+                    <div className="mr-1 hidden min-w-[140px] items-center gap-2.5 sm:flex">
                         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/30">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="text-emerald-300">
                                 <rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
@@ -375,8 +397,8 @@ export function DesktopViewer() {
 
                     <div className="hidden h-7 w-px bg-white/10 sm:block" />
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-2.5 py-1.5">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                        <div className="flex h-11 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-2.5 sm:h-auto sm:py-1.5">
                             <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">
                                 Screen
                             </span>
@@ -403,7 +425,7 @@ export function DesktopViewer() {
                         </div>
 
                         <div
-                            className="flex rounded-xl border border-white/10 bg-black/25 p-1"
+                            className="flex h-11 shrink-0 rounded-xl border border-white/10 bg-black/25 p-1 sm:h-auto"
                             role="group"
                             aria-label="View mode"
                         >
@@ -415,7 +437,8 @@ export function DesktopViewer() {
                                         type="button"
                                         title={mode.hint}
                                         onClick={() => setViewMode(mode.id)}
-                                        className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                                        aria-pressed={active}
+                                        className={`min-w-11 touch-manipulation rounded-lg px-2.5 py-1.5 text-xs font-medium transition active:scale-95 ${
                                             active
                                                 ? 'bg-emerald-500 text-emerald-950 shadow-sm'
                                                 : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
@@ -428,10 +451,23 @@ export function DesktopViewer() {
                         </div>
                     </div>
 
-                    <div className="ml-auto flex items-center gap-1.5">
+                    <div className="ml-auto flex items-center gap-2 sm:gap-1.5">
                         {viewHint ? (
                             <span className="mr-1 hidden text-[11px] text-zinc-500 lg:inline">{viewHint}</span>
                         ) : null}
+
+                        <IconButton label="Touch controls help" onClick={() => setShowTouchHelp((value) => !value)}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M8 11V7a2 2 0 1 1 4 0v4-1a2 2 0 1 1 4 0v2-1a2 2 0 1 1 4 0v4c0 4-2.7 7-7 7h-1c-2.4 0-4-1-5.4-2.8L3.4 15a2 2 0 0 1 3.1-2.5L8 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </IconButton>
+
+                        <IconButton label="Show phone keyboard" onClick={showKeyboard}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.8" />
+                                <path d="M7 9h1m3 0h1m3 0h1M7 13h1m3 0h1m3 0h1M8 16h8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                            </svg>
+                        </IconButton>
 
                         <IconButton label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} onClick={() => void toggleFullscreen()}>
                             {isFullscreen ? (
@@ -475,12 +511,73 @@ export function DesktopViewer() {
             {!toolbarVisible ? (
                 <button
                     type="button"
-                    className="absolute left-1/2 top-2 z-30 -translate-x-1/2 rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[11px] text-zinc-300 backdrop-blur"
+                    className="remote-toolbar absolute left-1/2 z-30 min-h-11 -translate-x-1/2 touch-manipulation rounded-full border border-white/10 bg-black/60 px-4 py-2 text-xs text-zinc-200 backdrop-blur"
                     onClick={() => setToolbarVisible(true)}
                 >
                     Show controls
                 </button>
             ) : null}
+
+            {showTouchHelp ? (
+                <div className="remote-touch-help absolute inset-x-2 z-20 mx-auto max-w-sm rounded-2xl border border-white/10 bg-black/80 p-4 text-sm text-zinc-200 shadow-2xl backdrop-blur-xl" role="status">
+                    <div className="mb-2 flex items-center justify-between gap-4">
+                        <strong>Touch controls</strong>
+                        <button type="button" className="min-h-11 rounded-lg px-3 text-zinc-300 active:bg-white/10" onClick={() => setShowTouchHelp(false)}>Close</button>
+                    </div>
+                    <ul className="space-y-1.5 text-zinc-300">
+                        <li>Tap: left click</li>
+                        <li>Two-finger tap: right click</li>
+                        <li>One-finger drag: drag pointer</li>
+                        <li>Two-finger drag: scroll</li>
+                        <li>Pinch: zoom remote app</li>
+                        <li>Keyboard button: type from phone</li>
+                    </ul>
+                </div>
+            ) : null}
+
+            <textarea
+                ref={keyboardRef}
+                className="fixed bottom-0 left-0 h-px w-px resize-none opacity-0"
+                aria-label="Remote keyboard input"
+                autoCapitalize="none"
+                autoComplete="off"
+                autoCorrect="off"
+                inputMode="text"
+                spellCheck={false}
+                onCompositionStart={() => {
+                    composingRef.current = true
+                }}
+                onCompositionEnd={(event) => {
+                    composingRef.current = false
+                    sendText(event.currentTarget.value)
+                    event.currentTarget.value = ''
+                }}
+                onInput={(event) => {
+                    if (composingRef.current) return
+                    sendText(event.currentTarget.value)
+                    event.currentTarget.value = ''
+                }}
+                onKeyDown={(event) => {
+                    const rfb = rfbRef.current
+                    if (!rfb) return
+
+                    const keys: Record<string, [number, string]> = {
+                        Backspace: [0xff08, 'Backspace'],
+                        Enter: [0xff0d, 'Enter'],
+                        Tab: [0xff09, 'Tab'],
+                        Escape: [0xff1b, 'Escape'],
+                        ArrowLeft: [0xff51, 'ArrowLeft'],
+                        ArrowUp: [0xff52, 'ArrowUp'],
+                        ArrowRight: [0xff53, 'ArrowRight'],
+                        ArrowDown: [0xff54, 'ArrowDown']
+                    }
+                    const key = keys[event.key]
+                    if (!key) return
+
+                    event.preventDefault()
+                    rfb.sendKey(key[0], key[1])
+                }}
+            />
 
             {error ? (
                 <div className="relative z-20 mx-3 mt-2 rounded-xl border border-amber-500/30 bg-amber-950/70 px-4 py-2 text-sm text-amber-100 backdrop-blur">
@@ -498,7 +595,7 @@ export function DesktopViewer() {
 
             <div
                 ref={screenRef}
-                className={`relative min-h-0 flex-1 bg-black ${
+                className={`remote-screen relative min-h-0 flex-1 bg-black ${
                     viewMode === 'original' ? 'overflow-auto' : 'overflow-hidden'
                 }`}
                 onClick={() => {

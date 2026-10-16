@@ -37,6 +37,9 @@ yarn-error.log*
 
 # local runtime logs / pid
 .runtime/
+/cloudflared/cloudflared.exe
+/cloudflared/*.log
+/cloudflared/config.yml
 
 # vercel
 .vercel

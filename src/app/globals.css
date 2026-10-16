@@ -10,6 +10,20 @@ body {
     margin: 0;
     background: #09090b;
     color: #fafafa;
+    overscroll-behavior: none;
+}
+
+.remote-toolbar {
+    top: max(0.5rem, env(safe-area-inset-top));
+}
+
+.remote-touch-help {
+    top: max(4.75rem, calc(env(safe-area-inset-top) + 4.25rem));
+}
+
+.remote-screen {
+    touch-action: none;
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
 * {
