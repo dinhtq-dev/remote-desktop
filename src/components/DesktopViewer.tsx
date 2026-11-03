@@ -665,17 +665,20 @@ export function DesktopViewer() {
         }
 
         try {
-            if (isCoarsePointer()) {
-                void lockLandscape()
-            }
             if (el.requestFullscreen) {
                 await el.requestFullscreen()
                 setIsFullscreen(true)
+                if (isCoarsePointer()) {
+                    await lockLandscape()
+                }
                 return
             }
             if (el.webkitRequestFullscreen) {
                 el.webkitRequestFullscreen()
                 setIsFullscreen(true)
+                if (isCoarsePointer()) {
+                    await lockLandscape()
+                }
                 return
             }
         } catch {
