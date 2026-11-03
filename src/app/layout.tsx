@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 
@@ -14,7 +14,25 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
     title: 'Ubuntu Remote Web',
-    description: 'Secure web remote desktop for this Ubuntu machine'
+    description: 'Secure web remote desktop for this Ubuntu machine',
+    appleWebApp: {
+        capable: true,
+        statusBarStyle: 'black-translucent',
+        title: 'Remote'
+    },
+    other: {
+        'mobile-web-app-capable': 'yes'
+    }
+}
+
+export const viewport: Viewport = {
+    width: 'device-width',
+    initialScale: 1,
+    minimumScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    viewportFit: 'cover',
+    themeColor: '#07080a'
 }
 
 export default function RootLayout({

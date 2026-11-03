@@ -18,13 +18,40 @@ $vncHost = if ($envValues.VNC_HOST) { $envValues.VNC_HOST } else { '127.0.0.1' }
 $vncPort = if ($envValues.VNC_PORT) { [int]$envValues.VNC_PORT } else { 5900 }
 $webPort = if ($envValues.PORT) { [int]$envValues.PORT } else { 3100 }
 
-$connection = New-Object System.Net.Sockets.TcpClient
-try {
-    $connection.Connect($vncHost, $vncPort)
-} catch {
-    throw "No VNC server at ${vncHost}:${vncPort}. Install/start a VNC server on Windows, set a VNC password, and restrict its port to localhost. RDP is not VNC."
-} finally {
-    $connection.Dispose()
+function Test-VncListening {
+    $connection = New-Object System.Net.Sockets.TcpClient
+    try {
+        $connection.Connect($vncHost, $vncPort)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        $connection.Dispose()
+    }
+}
+
+if (-not (Test-VncListening)) {
+    $vncPath = Join-Path $PSScriptRoot 'vnc\winvnc.exe'
+    if (-not (Test-Path $vncPath)) {
+        throw "No VNC server at ${vncHost}:${vncPort} and bundled UltraVNC missing at $vncPath."
+    }
+    Write-Host "Starting bundled UltraVNC on ${vncHost}:${vncPort}..."
+    Start-Process -FilePath $vncPath `
+        -ArgumentList '-run' `
+        -WorkingDirectory (Join-Path $PSScriptRoot 'vnc') `
+        -WindowStyle Hidden | Out-Null
+
+    $ready = $false
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        Start-Sleep -Milliseconds 250
+        if (Test-VncListening) {
+            $ready = $true
+            break
+        }
+    }
+    if (-not $ready) {
+        throw "Bundled UltraVNC failed to listen on ${vncHost}:${vncPort}."
+    }
 }
 
 if (-not (Test-Path node_modules)) { npm install; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }

@@ -4,11 +4,15 @@ declare module '@novnc/novnc' {
         disconnect(): void
         focus(): void
         blur(): void
+        clipboardPasteFrom(text: string): void
+        sendKey(keysym: number, code?: string, down?: boolean): void
         scaleViewport: boolean
         resizeSession: boolean
         clipViewport: boolean
         dragViewport: boolean
+        showDotCursor: boolean
         qualityLevel: number
+        compressionLevel: number
         _fbWidth?: number
         _fbHeight?: number
         addEventListener(type: string, listener: (...args: unknown[]) => void): void

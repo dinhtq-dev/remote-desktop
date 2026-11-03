@@ -59,6 +59,20 @@ echo "Starting web on http://127.0.0.1:${PORT} ..."
 node server.mjs --production &
 pids+=($!)
 
+# Public hostname needs cloudflared (tunnel "rdp" → remote.dinhtq.vn).
+if command -v cloudflared >/dev/null 2>&1 && [[ -f "${HOME}/.cloudflared/config.yml" ]]; then
+  if ! pgrep -f 'cloudflared.*run rdp' >/dev/null 2>&1; then
+    echo "Starting Cloudflare tunnel (remote.dinhtq.vn)..."
+    cloudflared --config="${HOME}/.cloudflared/config.yml" tunnel --no-autoupdate run rdp \
+      >>.runtime/cloudflared.out 2>&1 &
+    pids+=($!)
+  else
+    echo "Cloudflare tunnel already running."
+  fi
+else
+  echo "Note: cloudflared not started — https://remote.dinhtq.vn will not work until the tunnel runs."
+fi
+
 echo "OK — login at http://127.0.0.1:${PORT}/login (or https://remote.dinhtq.vn/login via tunnel)"
 echo "Ctrl+C to stop all."
 

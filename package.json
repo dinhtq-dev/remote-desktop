@@ -9,7 +9,8 @@
     "start": "node server.mjs --production",
     "start:all": "./start.sh",
     "gen-env": "node scripts/gen-env.mjs",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
     "@novnc/novnc": "^1.7.0",
