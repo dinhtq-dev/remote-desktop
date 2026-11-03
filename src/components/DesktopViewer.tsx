@@ -275,6 +275,9 @@ export function DesktopViewer() {
     const [qualityTooltip, setQualityTooltip] = useState('Tự động tối ưu theo băng thông')
     const [zoomLabel, setZoomLabel] = useState('1×')
     const [textSelectArmed, setTextSelectArmed] = useState(false)
+    const [isLandscape, setIsLandscape] = useState(false)
+    const [keyboardDockTop, setKeyboardDockTop] = useState(false)
+    const [dismissRotateHint, setDismissRotateHint] = useState(false)
     const pointerModeRef = useRef<PointerMode>(pointerMode)
 
     viewModeRef.current = viewMode
@@ -283,6 +286,42 @@ export function DesktopViewer() {
     useEffect(() => {
         zoomRef.current?.setPointerMode(pointerMode)
     }, [pointerMode])
+
+    const lockLandscape = useCallback(async () => {
+        try {
+            const orientation = screen.orientation as ScreenOrientation & {
+                lock?: (orientation: string) => Promise<void>
+            }
+            if (orientation?.lock) {
+                await orientation.lock('landscape')
+                return true
+            }
+        } catch {
+            // Ignored if browser requires user gesture or doesn't support lock (e.g. iOS Safari)
+        }
+        return false
+    }, [])
+
+    const lockLandscapeRef = useRef(lockLandscape)
+    lockLandscapeRef.current = lockLandscape
+
+    useEffect(() => {
+        function checkOrientation() {
+            if (typeof window === 'undefined') return
+            const landscape = window.innerWidth > window.innerHeight
+            setIsLandscape(landscape)
+            if (landscape) {
+                setKeyboardDockTop(true)
+            }
+        }
+        checkOrientation()
+        window.addEventListener('resize', checkOrientation)
+        window.addEventListener('orientationchange', checkOrientation)
+        return () => {
+            window.removeEventListener('resize', checkOrientation)
+            window.removeEventListener('orientationchange', checkOrientation)
+        }
+    }, [])
 
     const connected = status === 'Connected'
     const viewHint = VIEW_MODES.find((mode) => mode.id === viewMode)?.hint
@@ -440,6 +479,9 @@ export function DesktopViewer() {
                     if (!cancelled && screenRef.current) {
                         setStatus('Connected')
                         setError('')
+                        if (isCoarsePointer()) {
+                            void lockLandscapeRef.current()
+                        }
                         // Attach AFTER noVNC registers gesture listeners so we can replace them.
                         zoomRef.current?.dispose()
                         zoomRef.current = attachLocalViewportZoom(rfb, screenRef.current, {
@@ -623,6 +665,9 @@ export function DesktopViewer() {
         }
 
         try {
+            if (isCoarsePointer()) {
+                void lockLandscape()
+            }
             if (el.requestFullscreen) {
                 await el.requestFullscreen()
                 setIsFullscreen(true)
@@ -1231,138 +1276,324 @@ export function DesktopViewer() {
                 </div>
             ) : null}
 
+            {/* Suggest Landscape Mode on Mobile Portrait */}
+            {!isLandscape && isCoarsePointer() && connected && !dismissRotateHint ? (
+                <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 rounded-full border border-sky-400/40 bg-[#12141a]/95 px-3 py-1.5 text-xs text-sky-200 shadow-xl backdrop-blur-xl animate-fade-in">
+                    <span>🔄</span>
+                    <span className="text-[11px] font-medium">Xoay ngang để xem trọn vẹn màn hình</span>
+                    <button
+                        type="button"
+                        className="rounded-full bg-sky-500/25 px-2.5 py-0.5 text-[11px] font-bold text-sky-200 active:scale-95"
+                        onClick={() => {
+                            void lockLandscape()
+                            void toggleFullscreen()
+                        }}
+                    >
+                        Xoay ngay
+                    </button>
+                    <button
+                        type="button"
+                        className="ml-1 text-xs text-zinc-400 hover:text-white"
+                        onClick={() => setDismissRotateHint(true)}
+                        aria-label="Đóng gợi ý xoay"
+                    >
+                        ✕
+                    </button>
+                </div>
+            ) : null}
+
             {keyboardVisible ? (
-                <div className="remote-keyboard fixed inset-x-0 bottom-0 z-50 flex flex-col gap-1.5 border-t border-white/10 bg-[#12141a]/98 p-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur-2xl">
-                    {/* Row 1: Function Keys */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto px-1 py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-zinc-200 active:bg-white/20"
-                            onClick={() => sendSpecialKey(KEYSYMS.Escape, 'Escape')}
-                        >
-                            Esc
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-zinc-200 active:bg-white/20"
-                            onClick={() => sendSpecialKey(KEYSYMS.Tab, 'Tab')}
-                        >
-                            Tab
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-zinc-200 active:bg-white/20"
-                            onClick={() => sendSpecialKey(KEYSYMS.Backspace, 'Backspace')}
-                        >
-                            ⌫ Xóa
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-300 active:bg-emerald-500/40"
-                            onClick={() => sendSpecialKey(KEYSYMS.Return, 'Enter')}
-                        >
-                            Enter ⏎
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
-                            onClick={() => sendSpecialKey(KEYSYMS.Up, 'ArrowUp')}
-                        >
-                            ↑
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
-                            onClick={() => sendSpecialKey(KEYSYMS.Down, 'ArrowDown')}
-                        >
-                            ↓
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
-                            onClick={() => sendSpecialKey(KEYSYMS.Left, 'ArrowLeft')}
-                        >
-                            ←
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
-                            onClick={() => sendSpecialKey(KEYSYMS.Right, 'ArrowRight')}
-                        >
-                            →
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
-                            onClick={copyOnRemote}
-                        >
-                            Ctrl+C
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
-                            onClick={() => void pasteFromClipboard()}
-                        >
-                            Ctrl+V
-                        </button>
-                        <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
-                            onClick={selectAllOnRemote}
-                        >
-                            Ctrl+A
-                        </button>
+                <div
+                    className={`remote-keyboard fixed inset-x-0 z-50 flex flex-col gap-1.5 bg-[#12141a]/98 px-2 shadow-2xl backdrop-blur-2xl transition-all ${
+                        keyboardDockTop
+                            ? 'top-0 border-b border-white/15 pt-[max(0.4rem,env(safe-area-inset-top))] pb-1.5'
+                            : 'bottom-0 border-t border-white/15 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5'
+                    }`}
+                >
+                    {isLandscape ? (
+                        /* Landscape Mode: Single-Row Ultra-Slim (cao ~36px, không che nội dung máy tính) */
+                        <div className="flex items-center gap-1.5 w-full">
+                            {/* Input + Gửi */}
+                            <div className="flex items-center gap-1 flex-1 max-w-[320px] sm:max-w-[420px]">
+                                <input
+                                    ref={keyboardRef}
+                                    type="text"
+                                    className="h-8 flex-1 rounded-lg border border-white/10 bg-black/50 px-2.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-400/60"
+                                    aria-label="Thanh soạn thảo văn bản"
+                                    autoCapitalize="none"
+                                    autoComplete="off"
+                                    autoCorrect="off"
+                                    inputMode="text"
+                                    placeholder="Nhập lệnh hoặc gõ văn bản…"
+                                    spellCheck={false}
+                                    value={keyboardText}
+                                    onChange={(event) => setKeyboardText(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            event.preventDefault()
+                                            void submitKeyboardText(true)
+                                        }
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg bg-emerald-500 px-2.5 text-xs font-semibold text-emerald-950 active:bg-emerald-400 disabled:opacity-40"
+                                    disabled={!keyboardText}
+                                    onClick={() => void submitKeyboardText(true)}
+                                    title="Gửi nội dung và nhấn Enter"
+                                >
+                                    Gửi ⏎
+                                </button>
+                            </div>
 
-                        <button
-                            type="button"
-                            aria-label="Đóng bàn phím"
-                            className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-zinc-300 active:bg-white/20"
-                            onClick={hideKeyboard}
-                        >
-                            ✕
-                        </button>
-                    </div>
+                            {/* Accessory keys cuộn ngang */}
+                            <div className="flex items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-semibold text-zinc-200 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Escape, 'Escape')}
+                                >
+                                    Esc
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-semibold text-zinc-200 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Tab, 'Tab')}
+                                >
+                                    Tab
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs font-semibold text-zinc-200 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Backspace, 'Backspace')}
+                                >
+                                    ⌫
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-2 text-xs font-semibold text-emerald-300 active:bg-emerald-500/40"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Return, 'Enter')}
+                                >
+                                    Enter ⏎
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Up, 'ArrowUp')}
+                                >
+                                    ↑
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Down, 'ArrowDown')}
+                                >
+                                    ↓
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Left, 'ArrowLeft')}
+                                >
+                                    ←
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Right, 'ArrowRight')}
+                                >
+                                    →
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={copyOnRemote}
+                                >
+                                    Ctrl+C
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => void pasteFromClipboard()}
+                                >
+                                    Ctrl+V
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-8 shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={selectAllOnRemote}
+                                >
+                                    Ctrl+A
+                                </button>
+                            </div>
 
-                    {/* Row 2: Thanh soạn thảo văn bản luôn luôn hiển thị trực tiếp */}
-                    <div className="flex items-center gap-1.5 pt-1">
-                        <input
-                            ref={keyboardRef}
-                            type="text"
-                            className="h-10 flex-1 rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-400/60"
-                            aria-label="Thanh soạn thảo văn bản"
-                            autoCapitalize="none"
-                            autoComplete="off"
-                            autoCorrect="off"
-                            inputMode="text"
-                            placeholder="Nhập lệnh hoặc gõ văn bản…"
-                            spellCheck={false}
-                            value={keyboardText}
-                            onChange={(event) => setKeyboardText(event.target.value)}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter') {
-                                    event.preventDefault()
-                                    void submitKeyboardText(true)
-                                }
-                            }}
-                        />
-                        <button
-                            type="button"
-                            className="h-10 shrink-0 rounded-xl bg-emerald-500 px-3.5 text-xs font-semibold text-emerald-950 active:bg-emerald-400 disabled:opacity-40"
-                            disabled={!keyboardText}
-                            onClick={() => void submitKeyboardText(true)}
-                            title="Gửi nội dung và nhấn Enter"
-                        >
-                            Gửi ⏎
-                        </button>
-                        <button
-                            type="button"
-                            className="h-10 shrink-0 rounded-xl border border-white/10 bg-white/10 px-3 text-xs font-medium text-zinc-200 active:bg-white/20"
-                            onClick={() => sendSpecialKey(KEYSYMS.Return, 'Enter')}
-                            title="Nhấn phím Enter độc lập"
-                        >
-                            Enter
-                        </button>
-                    </div>
+                            {/* Dock Position Switcher & Close */}
+                            <div className="ml-auto flex shrink-0 items-center gap-1 pl-1">
+                                <button
+                                    type="button"
+                                    title={keyboardDockTop ? 'Chuyển thanh nhập xuống đáy' : 'Chuyển thanh nhập lên đỉnh'}
+                                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-zinc-300 active:bg-white/20"
+                                    onClick={() => setKeyboardDockTop((prev) => !prev)}
+                                    aria-label="Đổi vị trí thanh nhập"
+                                >
+                                    {keyboardDockTop ? '⬇' : '⬆'}
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Đóng bàn phím"
+                                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-zinc-300 active:bg-white/20"
+                                    onClick={hideKeyboard}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        /* Portrait Mode: 2 hàng đầy đủ */
+                        <>
+                            {/* Row 1: Function Keys */}
+                            <div className="flex items-center gap-1.5 overflow-x-auto px-1 py-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-zinc-200 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Escape, 'Escape')}
+                                >
+                                    Esc
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-zinc-200 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Tab, 'Tab')}
+                                >
+                                    Tab
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-zinc-200 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Backspace, 'Backspace')}
+                                >
+                                    ⌫ Xóa
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-300 active:bg-emerald-500/40"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Return, 'Enter')}
+                                >
+                                    Enter ⏎
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Up, 'ArrowUp')}
+                                >
+                                    ↑
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Down, 'ArrowDown')}
+                                >
+                                    ↓
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Left, 'ArrowLeft')}
+                                >
+                                    ←
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Right, 'ArrowRight')}
+                                >
+                                    →
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={copyOnRemote}
+                                >
+                                    Ctrl+C
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={() => void pasteFromClipboard()}
+                                >
+                                    Ctrl+V
+                                </button>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-zinc-300 active:bg-white/20"
+                                    onClick={selectAllOnRemote}
+                                >
+                                    Ctrl+A
+                                </button>
+
+                                <div className="ml-auto flex shrink-0 items-center gap-1 pl-1">
+                                    <button
+                                        type="button"
+                                        title={keyboardDockTop ? 'Chuyển thanh nhập xuống đáy' : 'Chuyển thanh nhập lên đỉnh'}
+                                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-zinc-300 active:bg-white/20"
+                                        onClick={() => setKeyboardDockTop((prev) => !prev)}
+                                        aria-label="Đổi vị trí thanh nhập"
+                                    >
+                                        {keyboardDockTop ? '⬇' : '⬆'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        aria-label="Đóng bàn phím"
+                                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-xs font-bold text-zinc-300 active:bg-white/20"
+                                        onClick={hideKeyboard}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Row 2: Thanh soạn thảo văn bản */}
+                            <div className="flex items-center gap-1.5 pt-1">
+                                <input
+                                    ref={keyboardRef}
+                                    type="text"
+                                    className="h-10 flex-1 rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-emerald-400/60"
+                                    aria-label="Thanh soạn thảo văn bản"
+                                    autoCapitalize="none"
+                                    autoComplete="off"
+                                    autoCorrect="off"
+                                    inputMode="text"
+                                    placeholder="Nhập lệnh hoặc gõ văn bản…"
+                                    spellCheck={false}
+                                    value={keyboardText}
+                                    onChange={(event) => setKeyboardText(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            event.preventDefault()
+                                            void submitKeyboardText(true)
+                                        }
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    className="h-10 shrink-0 rounded-xl bg-emerald-500 px-3.5 text-xs font-semibold text-emerald-950 active:bg-emerald-400 disabled:opacity-40"
+                                    disabled={!keyboardText}
+                                    onClick={() => void submitKeyboardText(true)}
+                                    title="Gửi nội dung và nhấn Enter"
+                                >
+                                    Gửi ⏎
+                                </button>
+                                <button
+                                    type="button"
+                                    className="h-10 shrink-0 rounded-xl border border-white/10 bg-white/10 px-3 text-xs font-medium text-zinc-200 active:bg-white/20"
+                                    onClick={() => sendSpecialKey(KEYSYMS.Return, 'Enter')}
+                                    title="Nhấn phím Enter độc lập"
+                                >
+                                    Enter
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             ) : null}
 
